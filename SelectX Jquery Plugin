@@ -1,0 +1,566 @@
+/** Filterable Select Control JQuery Pluggin >>> START **/
+(function ($) {
+    var DefOptions = { dropDownMaxHeight: 300, disabledClass: "ReadOnlyField", filterInputWaterMark: "Filter options...", inActiveOptionClass: "XInActive", CSSPosition: "Inline"/*Style/Inline*/ };
+    var opts = {};
+    $.fn.selectXStyle = {
+        selectX: {
+            position: "relative",
+            display: "inline-block",
+            verticalAlign: "bottom",
+            cursor: "default",
+            fontSize: "13px",
+            boxSizing: "border-box",
+            background: "#FFF",
+        },
+        selectXWI: {
+            display: "block",
+            textDecoration: "none",
+            border: "1px solid #AAA",
+            borderRadius: "2px",
+            color: "#000",
+            cursor: "inherit",
+            boxSizing: "border-box",
+        },
+        selectXChoiceW: {
+            height: "100%",
+            lineHeight: "27px",
+            color: "inherit",
+            boxSizing: "border-box",
+        },
+        selectXChoiceWI: {
+            width: "calc(100% - 20px)",
+            height: "100%",
+            float: "left",
+            position: "relative",
+            boxSizing: "border-box",
+        },
+        selectXSelectedText: {
+            display: "block",
+            width: "100%",
+            height: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            padding: "0px 4px",
+            whiteSpace: "nowrap",
+            boxSizing: "border-box",
+        },
+        selectXFilterInput: {
+            width: "100%",
+            height: "100%",
+            color: "inherit",
+            position: "absolute",
+            left: "0px",
+            top: "0px",
+            display: "none",
+            boxSizing: "border-box",
+
+        },
+        selectXDropDownButton: {
+            display: "block",
+            width: "20px",
+            height: "100%",
+            fontFamily: "Arial",
+            border: "1px solid #AAA",
+            overflow: "hidden",
+            background: "#e1e1e1",
+            textAlign: "center",
+            color: "#565656",
+            boxSizing: "border-box",
+        },
+        selectXOptionsW: {
+            position: "absolute",
+            overflow: "auto",
+            overflowX: "hidden",
+            background: "#FFF",
+            border: "1px solid #AAA",
+            display: "none",
+            zIndex: 10,
+            textAlign: "left",
+            left: "0px",
+            boxSizing: "border-box",
+        },
+        selectXOption: {
+            whiteSpace: "nowrap",
+            display: "block",
+            cursor: "default",
+            padding: "1px 4px",
+            height: "25px",
+            boxSizing: "border-box",
+        },
+        selectXSelectedOption: {
+            background: "#0078d7",
+            color: "#FFF",
+            boxSizing: "border-box",
+        },
+        selectXUnSelectedOption: {
+            background: "none",
+            color: "inherit",
+            boxSizing: "border-box",
+        },
+        selectXNoMatch: {
+            whiteSpace: "nowrap",
+            fontStyle: "italic",
+            textAlign: "center",
+            display: "none",
+            fontSize: "12px",
+            height: "25px",
+            lineHeight: "25px",
+            color: "#555",
+            padding: "0px 4px",
+            boxSizing: "border-box",
+        }
+    };
+    $.fn.selectX = function (options) {
+        var $this = this; // jquery select element object...
+
+        if (!$this.is("select")) return $this;
+
+        if (typeof ($this.attr("data-selectX-id")) !== "undefined") {//Element '<select>' has already been binded to selectX
+            return $("#" + $this.attr("data-selectX-id"));//Return the corresponding 'SelectX' element
+        }
+
+        // copy all default options to the option obj in action...
+        opts = copyLiteralObject(DefOptions);
+        // overwrite the default options with the defined options.....
+        if (options) { 
+            for (var x in options) {
+                opts[x] = options[x];
+            }
+        }
+        $this.data("SelectXOptions", opts);//Store individual opts to the source jquery select element data...
+
+        var $selectX = createSelectXControl($this);
+        populateXOptions($selectX, $this);//Populate options from $this(<select>) element
+        if (opts.CSSPosition === "Style" && $("#stySelectX").length === 0) portStylesOnDocumentHead();
+        applyFurtherStyles($selectX, $this);
+        bindSelectXEvents($selectX, $this);
+
+        $this.hide();
+        $this.before($selectX); //Add the selectX to the DOM
+
+        return $this;
+    };
+    $.fn.focusSelectX = function () {
+        return this.selectX().find("a.SelectXWI").focus();
+    };
+    $.fn.reloadSelectX = function () {
+        var $this = this;
+        
+        if (!$this.is("select")) return $this;
+
+        var $selectX = $this.selectX();
+
+        populateXOptions($selectX, $this);
+
+        //Selected value & text might have change, since the options have changed. Apply the change appropriate
+        $this.updateSelectX();
+
+        bindSelectXEvents($selectX, $this);
+        
+        return $this;
+    };
+    $.fn.updateSelectX = function (triggerChanges) {//Update SelectX: value,text to that of this(calling select) & corresponding optionX is 'XSelected'
+        var $this = this;
+
+        if (!$this.is("select")) return $this;
+
+        triggerChanges = triggerChanges || false;
+
+        var $optionX = $this.selectX().find(".SelectXOption[data-value='" + $this.val() + "']");
+        afterOptionSelectCallBackFn = selectOption($optionX);
+        if (triggerChanges && typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn();
+
+        return $this;
+    };
+    var createSelectXControl = function ($this) {
+        var opts = $this.data("SelectXOptions");
+        var selectedText = $this.find("option:selected").text();
+        var selectXId = "SelectX_" + (typeof ($this.attr("id")) == "undefined" ? $(".SelectX").length + 1 : $this.attr("id"));
+        $this.attr("data-selectx-id", selectXId);
+
+        var $selectX = $("<div>", { "class": "SelectX", "id": selectXId, "data-value": $this.val(), "data-text": selectedText });
+        $selectX.data("$OriginalSelect", $this);
+
+        var $selectXWI = $("<a>", { "class": "SelectXWI", "href": "javascript:void 0;" });
+
+        var $choiceW = $("<div>", { "class": "SelectXChoiceW"});
+
+        var $choiceWI = $("<div>", { "class": "SelectXChoiceWI" });
+
+        var $selectedText = $("<span>", { "class": "SelectXSelectedText"});
+        $selectedText.text(selectedText);
+        if(opts.CSSPosition === "Inline") $selectedText.css($.fn.selectXStyle.selectXSelectedText);
+        $selectedText.appendTo($choiceWI);
+
+        var $filterInput = $('<input type="text" class="SelectXFilterInput" autocomplete="off" placeholder="' + opts.filterInputWaterMark + '"/>');
+        if (opts.CSSPosition === "Inline") $filterInput.css($.fn.selectXStyle.selectXFilterInput); //.cssX("border", "0px", "important");
+        $filterInput.appendTo($choiceWI);
+
+        if (opts.CSSPosition === "Inline") $choiceWI.css($.fn.selectXStyle.selectXChoiceWI);
+        $choiceWI.appendTo($choiceW);
+
+        var $dropDownBtn = $("<span>", { "class": "SelectXDropDownButton" }).text("˅");
+        if (opts.CSSPosition === "Inline") $dropDownBtn.css($.fn.selectXStyle.selectXDropDownButton);
+        $dropDownBtn.appendTo($choiceW);
+
+        if (opts.CSSPosition === "Inline") $choiceW.css($.fn.selectXStyle.selectXChoiceW);
+        $choiceW.appendTo($selectXWI)
+
+        var $optionsW = $("<div>", { "class": "SelectXOptionsW XList" });//XList will be used with 'filterList' function
+
+        var $noMatch = $("<span>", { "class": "SelectXNoMatch" }).text("--- No Match Found ---");
+        if (opts.CSSPosition === "Inline") $noMatch.css($.fn.selectXStyle.selectXNoMatch);
+        $noMatch.appendTo($optionsW);
+
+        if (opts.CSSPosition === "Inline") $optionsW.css($.fn.selectXStyle.selectXOptionsW);
+        $optionsW.appendTo($selectXWI);
+
+        if (opts.CSSPosition === "Inline") $selectXWI.css($.fn.selectXStyle.selectXWI);
+        $selectXWI.appendTo($selectX);
+
+        if (opts.CSSPosition === "Inline") $selectX.css($.fn.selectXStyle.selectX);
+
+        return $selectX;
+    };
+    var populateXOptions = function ($selectX, $this) {
+        var opts = $this.data("SelectXOptions");
+        var $optionsW = $selectX.find(".SelectXOptionsW");
+
+        $optionsW.find(".SelectXOption").remove(); //Remove all existing options
+
+        var $optionX,selectedValueAvailable;
+        $this.find("option").each(function () {
+            $optionX = $("<span>", { "class": "SelectXOption XItem" }); //XItem will be used with 'filterList' function
+            $optionX.attr("data-value", $(this).attr("value"));
+            $optionX.text($(this).text());
+            if ($(this).is(":selected")) {
+                $optionX.addClass("XSelected");
+                selectedValueAvailable = true
+            }
+            $optionX.addClass($(this).attr("class")); //Class XInActive will be used with 'filterList' function
+            if (opts.CSSPosition === "Inline") $optionX.css($.fn.selectXStyle.selectXOption);
+            if ($optionX.is(".XInActive")) $optionX.hide();
+            $optionX.appendTo($optionsW);
+        });
+
+        if (!selectedValueAvailable) $optionsW.find(".SelectXOption:first").addClass("XSelected");
+
+        $optionsW.find(".SelectXNoMatch").appendTo($optionsW);//Move the element to the end of optionsW list
+        
+        registerCommittedOption($optionsW.closest(".SelectX"));
+    };
+    var portStylesOnDocumentHead = function () {//This should only execute when 'CSSPosition' option is set to 'Style'
+        var $style = $('<style type="text/css" id="stySelectX">');
+
+        $style.append(".SelectX{" + $.toRawStyle($.fn.selectXStyle.selectX) + "}");
+        $style.append(".SelectXWI{" + $.toRawStyle($.fn.selectXStyle.selectXWI) + "}");
+        $style.append(".SelectXChoiceW{" + $.toRawStyle($.fn.selectXStyle.selectXChoiceW) + "}");
+        $style.append(".SelectXChoiceWI{" + $.toRawStyle($.fn.selectXStyle.selectXChoiceWI) + "}");
+        $style.append(".SelectXSelectedText{" + $.toRawStyle($.fn.selectXStyle.selectXSelectedText) + "}");
+        $style.append(".SelectXFilterInput{" + $.toRawStyle($.fn.selectXStyle.selectXFilterInput) + "}"); //+ "border:0px !important;}"
+        $style.append(".SelectXDropDownButton{" + $.toRawStyle($.fn.selectXStyle.selectXDropDownButton) + "}");
+        $style.append(".SelectXOptionsW{" + $.toRawStyle($.fn.selectXStyle.selectXOptionsW) + "}");
+        $style.append(".SelectXOption{" + $.toRawStyle($.fn.selectXStyle.selectXOption) + "}");
+        $style.append(".SelectXNoMatch{" + $.toRawStyle($.fn.selectXStyle.selectXNoMatch) + "}");
+        $style.append(".XHighlighted{" + $.toRawStyle($.fn.selectXStyle.selectXSelectedOption) + "}");
+                        
+        $style.appendTo("head");
+    };
+    var applyFurtherStyles = function ($selectX, $this) {
+        var opts = $this.data("SelectXOptions");
+
+        $selectX.css({
+            width: $this.outerWidth() + "px",
+        }).find(".SelectXWI").css({
+            height: $this.outerHeight() + "px",
+        });
+
+        var $optionsW = $selectX.find(".SelectXOptionsW").css({
+            maxHeight: opts.dropDownMaxHeight + "px",
+        });
+
+        if (isSelectXDisabled($selectX)) {
+            $selectX.addClass(opts.disabledClass);
+            $selectX.add($optionsW).css("background", "#DDD");
+        }
+
+        var optionsXTotalHeight = $optionsW.find(".SelectXOption").length * parseFloatValue($.fn.selectXStyle.selectXOption.height);
+        if (opts.dropDownMaxHeight < optionsXTotalHeight) {//Overflowing/Vertical scroll bar will appear
+            $optionsW.css("min-width", $this.outerWidth() + 12 + "px");//12 is inner space(in px) of optionsW that will be hidden by the scroll bar. Here we are fixing that scroll bar space to not hide options
+        }
+    };
+    var bindSelectXEvents = function ($selectX, $this) {
+        var opts = $this.data("SelectXOptions");
+        
+        //SelectXWI focused/keyed
+        $selectX.find(".SelectXWI").off("focus.SelectXWI_focus").on("focus.SelectXWI_focus", function (e) {
+            enterSelectX($(this).closest(".SelectX"));
+        }).off("blur.SelectXWI_blur").on("blur.SelectXWI_blur", function () {
+            var $selectX = $(this).closest(".SelectX");
+            if (isSelectXFilterInputVisible($selectX)) return; //SelectX is still in filter mode
+            leaveSelectX($selectX);
+            $selectX.data("$OriginalSelect").trigger("blur"); //Trigger the blur event of original select element
+        }).off("keydown.SelectXWI_keydown").on("keydown.SelectXWI_keydown", function (e) {//Handle option selection using arrows, show filter input & options dropdown
+            if (e.which === keys.code.tabKeyCode || e.which === keys.code.shiftKeyCode || e.which === keys.code.ctrlKeyCode ||
+                e.which === keys.code.altKeyCode) return;
+
+            var $selectX = $(this).closest(".SelectX");
+
+            if (isSelectXDisabled($selectX)) return;
+
+            if (e.which >= keys.code.leftArrowKeyCode && e.which <= keys.code.downArrowKeyCode) {
+                if (isSelectXFilterInputVisible($selectX)) {//When using arrows on the filter input, the left & right arrows should move between characters typed on the input
+                    if (e.which === keys.code.upArrowKeyCode || e.which === keys.code.downArrowKeyCode) {
+                        onOptionSelectByKeyPress(e, $selectX);
+                    }
+                } else {
+                    onOptionSelectByKeyPress(e, $selectX);
+                }
+            } else if (e.which === keys.code.spaceBarKeyCode) {//Show options dropdown
+                if (!isSelectXDropDownVisible($selectX)) showSelectXDropDown($selectX);
+            } else if (e.which === keys.code.enterKeyCode) {
+                e.preventDefault();
+                if (isSelectXDropDownVisible($selectX)) hideSelectXDropDowns($selectX);
+            } else if (e.which === keys.code.ESCKeyCode) {
+                hideSelectXDropDowns($selectX);
+                var afterOptionSelectCallBackFn = revertChanges($selectX);
+                if (typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn($selectX);
+            } else {//Show filter input & options dropdown
+                if (!isSelectXFilterInputVisible($selectX)) showSelectXFilterInput($selectX);
+                if (!isSelectXDropDownVisible($selectX)) showSelectXDropDown($selectX);
+            }
+        });
+        //ChoiceW clicked/dblclicked
+        $selectX.find(".SelectXChoiceW").off("click.SelectXChoiceW_click").on("click.SelectXChoiceW_click", function (e) {//This will handle showing of the options dropdown
+            e.stopPropagation();
+
+            if (keys.behaviour.ctrlKeyDown) {
+                e.preventDefault();
+                return;
+            }
+
+            var $selectX = $(this).closest(".SelectX");
+
+            if ($selectX.is(".XActive")) {
+                if (isSelectXDropDownVisible($selectX)) {
+                    hideSelectXDropDowns();
+                } else {
+                    showSelectXDropDown($selectX);
+                }
+            }
+        }).off("dblclick.SelectXChoiceW_dblclick").on("dblclick.SelectXChoiceW_dblclick", function (e) { //This will handle showing of the filter input
+            var $selectX = $(this).closest(".SelectX");
+
+            if (keys.behaviour.ctrlKeyDown) {
+                e.preventDefault();
+                return;
+            }
+
+            if (isSelectXDisabled($selectX)) return;
+
+            if (!isSelectXFilterInputVisible($selectX)) showSelectXFilterInput($selectX).focus(); //Put the cursor on the filter input, ready for typing
+
+            if (!isSelectXDropDownVisible($selectX)) showSelectXDropDown($selectX);
+        });
+        //Options mouseovered & clicked
+        $selectX.find(".SelectXOption").off("mouseover.SelectXOption_mouseover").on("mouseover.SelectXOption_mouseover", function () {
+            highlightOption($(this));
+        }).off("click.SelectXOption_click").on("click.SelectXOption_click", function () {
+            var $selectX = $(this).closest(".SelectX");
+
+            if (isSelectXDisabled($selectX)) return;
+
+            var afterOptionSelectCallBackFn = selectOption($(this));
+
+            hideSelectXDropDowns($selectX);
+
+            if(typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn($selectX);
+        });
+        //Filter input typed & blurred
+        $selectX.find(".SelectXFilterInput").off("keydown.SelectXFilterInput_keydown").on("keydown.SelectXFilterInput_keydown", function (e) {//Handle option selection using arrows, focus the next form input on 'ENTER'
+            var $selectX = $(this).closest(".SelectX");
+
+            if (isSelectXDisabled($selectX)) return;
+
+            if (e.which === keys.code.enterKeyCode) {
+                e.preventDefault();
+
+               $(this).focusNext();//This will cause BLUR on filter input($(this))
+            } else if (e.which === keys.code.ESCKeyCode) {
+                hideSelectXDropDowns($selectX);
+                hideSelectXFilterInput($selectX);
+                var afterOptionSelectCallBackFn = revertChanges($selectX);
+                if (typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn($selectX);
+                if ($(":focus").is(".SelectXFilterInput")) $selectX.find("a").focus();
+            }
+        }).off("keyup.SelectXFilterInput_keyup").on("keyup.SelectXFilterInput_keyup", function (e) {//Do option filtering
+            if (e.which === keys.code.enterKeyCode || (e.which >= keys.code.leftArrowKeyCode && e.which <= keys.code.downArrowKeyCode) ||
+                e.which === keys.code.ESCKeyCode) return;
+
+            var $selectX = $(this).closest(".SelectX");
+
+            if (isSelectXDisabled($selectX)) return;
+
+            var typedText = $(this).val();
+
+            var $optionsW = $selectX.find(".SelectXOptionsW");
+
+            filterList($optionsW, typedText, undefined, undefined, undefined, undefined, false, $optionsW.find(".SelectXOption." + opts.inActiveOptionClass));
+
+            if ($optionsW.find(".SelectXOption:visible").length === 0) {//No match found
+                $selectX.find(".SelectXNoMatch").css("display", "block");
+            } else {//Match found
+                $selectX.find(".SelectXNoMatch").hide();
+
+                highlightOption($selectX.find(".SelectXOption:visible:first"));
+            }
+        }).off("blur.SelectXFilterInput_blur").on("blur.SelectXFilterInput_blur", function () {
+            var $selectX = $(this).closest(".SelectX");
+
+            if (isSelectXDisabled($selectX)) return;
+
+            //Select the highlighted option & hide filter input
+            var afterOptionSelectCallBackFn = selectOption($selectX.find(".SelectXOption.XHighlighted"));
+
+            hideSelectXFilterInput($selectX);
+
+            leaveSelectX($selectX);
+            $selectX.data("$OriginalSelect").trigger("blur"); //Trigger the blur event of original select element
+
+            if (typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn($selectX);
+        });
+    };
+    var enterSelectX = function ($selectX) {
+        if ($selectX.is(".XActive")) return;
+        hideSelectXDropDowns();
+        $selectX.addClass("XActive");
+    };
+    var highlightOption = function ($optionX) {//Toggling the option background color & 'XHighlighted' class
+        $optionX.closest(".SelectX").find(".SelectXOption.XHighlighted").removeClass("XHighlighted").css($.fn.selectXStyle.selectXUnSelectedOption); //Clear any current highlight
+        $optionX.addClass("XHighlighted").css($.fn.selectXStyle.selectXSelectedOption); //Add highlight to the $optionX
+    };
+    var hideSelectXDropDowns = function ($selectX) {
+        if ($selectX) {
+            $selectX.find(".SelectXOptionsW:visible").hide();
+        } else {
+            $selectX = $(".SelectXOptionsW:visible").hide();
+        }
+        $selectX.find(".SelectXFilterInput").val("").trigger("keyup");//Force filters go to normal
+    };
+    var showSelectXDropDown = function ($selectX) {
+        $selectX.find(".SelectXOptionsW:hidden").show();//Dropdown the options
+
+        applyStylesOnDropDown($selectX);
+
+        $selectX.find(".SelectXFilterInput").val("").trigger("keyup");//Force filters go to normal
+
+        var $selectedOptionX = $selectX.find(".SelectXOption.XSelected");
+
+        highlightOption($selectedOptionX);
+
+        $selectX.find(".SelectXOptionsW").scrollTop($selectedOptionX.offset().top);
+
+        $selectX.find(".SelectXNoMatch").hide();
+    };
+    var applyStylesOnDropDown = function ($selectX) {//When the dropdown is shown
+        var $optionsW = $selectX.find(".SelectXOptionsW");
+        var bottomSpaceForDropDownW = $(window).height() - ($selectX.offset().top + $selectX.outerHeight()); //Calculate bottom position for $optionsW
+        var topSpaceForDropDownW = $selectX.offset().top;
+        $optionsW.css({ marginTop: "unset", bottom: "unset" }); //Clear position style
+        if (bottomSpaceForDropDownW < $optionsW.outerHeight()) {//If the bottom space can't accomodate the whole $optionsW
+            if (topSpaceForDropDownW > bottomSpaceForDropDownW) {//If the top space has a reasonable space to display $optionsW
+                $optionsW.css("bottom", $selectX.outerHeight() + "px");
+            } else {//If the bottom space has a reasonable space to display $optionsW
+                $optionsW.css("margin-top", "1px");//0px
+            }
+        } else {//If the bottom space can accomodate the whole $optionsW
+            $optionsW.css("margin-top", "1px");//0px
+        }
+        $optionsW.css({ minWidth: $selectX.outerWidth() + "px" });//Adjust styles further
+    }
+    var isSelectXDropDownVisible = function ($selectX) {
+        return $selectX.find(".SelectXOptionsW").is(":visible");
+    };
+    var showSelectXFilterInput = function ($selectX) {
+        return $selectX.find(".SelectXFilterInput").show().focus();
+    };
+    var hideSelectXFilterInput = function ($selectX) {
+        $selectX.find(".SelectXFilterInput").hide();
+    };
+    var isSelectXFilterInputVisible = function ($selectX) {
+        return $selectX.find(".SelectXFilterInput").is(":visible");
+    };
+    var onOptionSelectByKeyPress = function (e, $selectX) {
+        var $currentHighlightedOption = $selectX.find(".SelectXOption.XHighlighted:not(.Hidden,." + opts.inActiveOptionClass + ")");
+        if ($currentHighlightedOption.length === 0) $currentHighlightedOption = $selectX.find(".SelectXOption.XSelected");
+        var $newHighlightedOption;
+        var afterOptionSelectCallBackFn;
+        if (e.which === keys.code.downArrowKeyCode || e.which === keys.code.rightArrowKeyCode) {//Next option
+            $newHighlightedOption = $currentHighlightedOption.nextIn($selectX.find(".SelectXOption:not(.Hidden,." + opts.inActiveOptionClass + ")"));
+            if ($newHighlightedOption.length === 1) {
+                highlightOption($newHighlightedOption);
+                afterOptionSelectCallBackFn = selectOption($newHighlightedOption);
+            }
+            e.preventDefault();
+        } else if (e.which === keys.code.upArrowKeyCode || e.which === keys.code.leftArrowKeyCode) {//Previous option
+            $newHighlightedOption = $currentHighlightedOption.prevIn($selectX.find(".SelectXOption:not(.Hidden,." + opts.inActiveOptionClass + ")"));
+            if ($newHighlightedOption.length === 1) {
+                highlightOption($newHighlightedOption);
+                afterOptionSelectCallBackFn = selectOption($newHighlightedOption);
+            }
+            e.preventDefault();
+        }
+        if (typeof (afterOptionSelectCallBackFn) === "function") afterOptionSelectCallBackFn($selectX);
+    };
+    var selectOption = function ($optionX) {//Update SelectX: value,text to that of $optionX & $optionX is 'XSelected'
+        if (typeof ($optionX) === "undefined" || $optionX.length === 0) return;
+
+        var $selectX = $optionX.closest(".SelectX");
+
+        var $previousSelectedOptionX = $selectX.find(".SelectXOption.XSelected").removeClass("XSelected");//Clear the current XSelected option as marked selected option
+
+        var selectedValue = $optionX.attr("data-value");
+        var selectedText = $optionX.text();
+
+        $selectX.attr("data-value", selectedValue).attr("data-text", selectedText);
+        $selectX.find(".SelectXSelectedText").text(selectedText);
+
+        $optionX.addClass("XSelected");//Mark this $optionX as selected option
+
+        $selectX.data("$OriginalSelect").val($selectX.attr("data-value"));//Replicate the change to the original '<select>' element
+
+        if (!$previousSelectedOptionX.is($optionX)) {//Change occured
+            return function ($selectX) {//Let the caller decide whether to trigger the change event of original select element
+                $selectX.data("$OriginalSelect").trigger("change");
+            }
+        }
+        return;
+    };
+    var revertChanges = function ($selectX) {
+        var $committedOptionX = getCommittedOption($selectX);
+        var afterOptionSelectCallBackFn = selectOption($committedOptionX);//Put the value to the previous committed option
+        highlightOption($committedOptionX);//Since assigning of selected option via 'selectOption' function is done programmaticaly, XHighlight(ed) option has to be enforced programmatically too, to the now selected option
+        return afterOptionSelectCallBackFn;
+    };
+    var isSelectXDisabled = function ($selectX) {
+        var $originalSelect = $selectX.data("$OriginalSelect");
+        var opts = $originalSelect.data("SelectXOptions");
+        return $originalSelect.is("." + opts.disabledClass) || $selectX.is("." + opts.disabledClass);
+    };
+    var leaveSelectX = function ($selectX) {
+        hideSelectXDropDowns($selectX);
+        if ($selectX) {
+            $selectX.removeClass("XActive");
+            registerCommittedOption($selectX);
+        } else {
+            $(".SelectX").removeClass("XActive");
+        }
+    };
+    var registerCommittedOption = function ($selectX) {//Assign to SelectX data, the option that is selected at the time a user leaves the SelectX. Should only be called from functions: 'populateXOptions' & 'leaveSelectX'
+        $selectX.data("$CommittedXOption", $selectX.find(".SelectXOption.XSelected"));
+    };
+    var getCommittedOption = function ($selectX) {
+        return $selectX.data("$CommittedXOption");
+    };
+})(jQuery);
+/** Filterable Select Control JQuery Pluggin >>> END **/
